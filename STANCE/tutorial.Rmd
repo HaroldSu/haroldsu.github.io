@@ -55,24 +55,20 @@ mySTANCE <- data_preprocess(object = mySTANCE,
                             normalized = FALSE)
 ```
 
-## Build Gaussian kernel matrix
+## Build Gaussian kernel matrix and construct the important matrices
 Build the Gaussian kernel matrix to model spatial correlation between spots. The Gaussian kernel bandwidth will be selected automatically:
 - for datasets with 5000 spots or fewer, non-parametric Sheather-Jones' bandwidths are computed for each gene, and the median of these values is used as the common bandwidth; 
 - for datasets with more than 5000 spots, Silverman's bandwidths are computed for each gene, and the median of these gene-specific bandwidths is used as the common bandwidth.
+
+This step also constructs the important matrices, including design matrices $\mathbf{X}$, covariance matrices (i.e. $\mathbf{K}$ for spatial effects $\gamma_k$ and $\mathbf{I}$ for residual error $\varepsilon$) and $\mathbf{\Sigma}_k = \mathbf{\Pi}_k \mathbf{K} \mathbf{\Pi}_k^T$ matrices for all the $\gamma_k$'s, before fitting STANCE model.
 ```{r}
 mySTANCE <- build_kernelMatrix(object = mySTANCE)
 ```
 
-## Obtain lists for important model matrices
-This step is to construct the important matrices, including design matrices $\mathbf{X}$, covariance matrices (i.e. $\mathbf{K}$ for spatial effects $\gamma_k$ and $\mathbf{I}$ for residual error $\varepsilon$) and $\mathbf{\Sigma}_k = \mathbf{\Pi}_k \mathbf{K} \mathbf{\Pi}_k^T$ matrices for all the $\gamma_k$'s, before fitting STANCE model.
+## Perform STANCE overall test for utSVGs (including both SVGs & ctSVGs)
+Here, for efficiency, we skip the bias correction procedure. Use "Benjamini-Yekutieli" method to adjust p-values to control false discovery rate.
 ```{r}
-mySTANCE <- get_modelMatrices(object = mySTANCE)
-```
-
-## Perform STANCE overall test for SVGs & ctSVGs
-Here, for effiency, we skip the bias correction procedure. Use "Benjamini-Yekutieli" method to adjust p-values to control false discovery rate.
-```{r}
-mySTANCE <- runTest1(object = mySTANCE, 
+mySTANCE <- runTest1(object = mySTANCE,
                      correction = F, pv.adjust = "BY")
 ```
 
@@ -85,15 +81,17 @@ head(mySTANCE@Test_1)
 ```{r}
 # List for all the genes in the experiment
 genes.list <- rownames(mySTANCE@gene_expression)
-# List for SVGs & ctSVGs detected by STANCE overall test
+# List for utSVGs detected by STANCE overall test
 genes.sig.1 <- genes.list[mySTANCE@Test_1$p_value_adj < 0.05]
 ```
 
 Perform STANCE individual test on each of genes passing the overall test (we called these genes "**utSVGs**"). `Cell_types_to_test = NULL` indicates that all the cell types would be tested. `Genes_to_test = genes.sig.1[1:100]` specifies that the first 100 significant genes detected by overall test will be tested.
 ```{r}
 mySTANCE <- runTest2(object = mySTANCE, 
-                     Genes_to_test = genes.sig.1[1:100], Cell_types_to_test = NULL, 
-                     pv.adjust = "BY")
+                     Genes_to_test = genes.sig.1[1:100], 
+                     Cell_types_to_test = NULL, 
+                     correction = F, 
+                     ncores = 1)
 ```
 
 The function outputs a list containing a data frame of test statistic values, as well as the associated p-values for each cell type.
@@ -107,7 +105,9 @@ head(mySTANCE@Test_2[["2"]])
 ## Estimate the variance components of STANCE model for all the genes
 `Genes_to_test = genes.sig.1[1:100]` specifies that the first 100 significant genes detected by overall test will be estimated.
 ```{r}
-mySTANCE <- varcomp_est(object = mySTANCE, Genes_to_est = genes.sig.1[1:100])
+mySTANCE <- varcomp_est(object = mySTANCE, 
+                        Genes_to_est = genes.sig.1[1:100],
+                        ncores = 1)
 ```
 
 ```{r}
@@ -115,8 +115,8 @@ head(mySTANCE@VarComp_estimates)
 ```
 
 ## Display top ctSVGs for the cell type of interest
-Pick out top 20 ctSVGs (if less than 20, then all the ctSVGs will be displayed) for cell type of interest (`CT_of_interest = "1"`) .
-```{r}
+Given the significance level 0.05, pick out top 20 ctSVGs (if less than 20, then all the ctSVGs will be displayed) for cell type of interest (`CT_of_interest = "1"`).
+```{r, warning=FALSE}
 mySTANCE <- CT_topGenes(object = mySTANCE, 
                         CT_of_interest = "1", numTopGenes = 20)
 # Print the list of top genes for cell type "1"
