@@ -66,7 +66,7 @@ mySTANCE <- build_kernelMatrix(object = mySTANCE)
 ```
 
 ## Perform STANCE overall test for utSVGs (including both SVGs & ctSVGs)
-Here, for efficiency, we skip the bias correction procedure. Use "Benjamini-Yekutieli" method to adjust p-values to control false discovery rate.
+Here, for efficiency, we skip the bias correction procedure (`correction = F`). Use "Benjamini-Yekutieli" method to adjust p-values to control false discovery rate (`pv.adjust = "BY"`).
 ```{r}
 mySTANCE <- runTest1(object = mySTANCE,
                      correction = F, pv.adjust = "BY")
@@ -82,13 +82,14 @@ head(mySTANCE@Test_1)
 # List for all the genes in the experiment
 genes.list <- rownames(mySTANCE@gene_expression)
 # List for utSVGs detected by STANCE overall test
-genes.sig.1 <- genes.list[mySTANCE@Test_1$p_value_adj < 0.05]
+utSVG.list <- genes.list[mySTANCE@Test_1$p_value_adj < 0.05]
+utSVG.list[171:180]
 ```
 
-Perform STANCE individual test on each of genes passing the overall test (we called these genes "**utSVGs**"). `Cell_types_to_test = NULL` indicates that all the cell types would be tested. `Genes_to_test = genes.sig.1[1:100]` specifies that the first 100 significant genes detected by overall test will be tested.
+Perform STANCE individual test on each of genes passing the overall test (we called these genes "**utSVGs**"). `Cell_types_to_test = NULL` indicates that all the cell types would be tested. `Genes_to_test = utSVG.list[1:100]` specifies that the first 100 significant genes detected by overall test will be tested.
 ```{r}
 mySTANCE <- runTest2(object = mySTANCE, 
-                     Genes_to_test = genes.sig.1[1:100], 
+                     Genes_to_test = utSVG.list[101:200], 
                      Cell_types_to_test = NULL, 
                      correction = F, 
                      ncores = 1)
@@ -106,7 +107,7 @@ head(mySTANCE@Test_2[["2"]])
 `Genes_to_test = genes.sig.1[1:100]` specifies that the first 100 significant genes detected by overall test will be estimated.
 ```{r}
 mySTANCE <- varcomp_est(object = mySTANCE, 
-                        Genes_to_est = genes.sig.1[1:100],
+                        Genes_to_est = utSVG.list[101:200],
                         ncores = 1)
 ```
 
@@ -130,4 +131,17 @@ cat(paste0('The top cell type specific SVGs for cell type \"',
 Draw a stacked bar plot for top genes visualizing the proportion of variance explained by all the cell types and error.
 ```{r}
 print(mySTANCE@cell_type_top_genes$stacked_bar_plot)
+```
+
+## Visualize gene expression
+For a given gene, its expression levels across spatial locations within the tissue can be visualized, providing an intuitive representation of spatial gene expression patterns. Here, we employ the `visualizeGenePattern` function to display the spatial expression pattern of "Cabin1," which was identified as a cell-type-1-specific ctSVG by the STANCE Stage 2 test results.
+
+When setting `scaled_gene_expression = TRUE`, the gene expression $y_i$ at the $i$-th spot is scaled using the formula:
+$$y^{\text{scaled}}_i = \frac{y_i - \min(\mathbf{y})}{\max(\mathbf{y}) - \min(\mathbf{y})}$$
+where $\mathbf{y}$ represents the vector of gene expression values across all spots. This scaling ensures the expression values are normalized to a range between 0 and 1, facilitating comparison and visualization.
+```{r, warning=FALSE}
+visualizeGenePattern(object = mySTANCE, gene_to_display = "Cabin1",
+                    filling_colors = c("white", "darkblue"),
+                    scaled_gene_expression = TRUE,
+                    point_size = 4, title_size = 16, legend_title_size = 14, legend_text_size = 10)
 ```
