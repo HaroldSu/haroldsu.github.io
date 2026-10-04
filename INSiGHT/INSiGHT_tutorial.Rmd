@@ -1,0 +1,184 @@
+---
+title: "INSiGHT: A Nonparametric Framework for Multi-Sample Spatially Variable Gene Detection in Spatial Transcriptomics"
+author: "Haohao Su"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    number_sections: true
+    code_folding: show
+    self_contained: true
+params:
+  data_file: "../DLPFC/data/DLPFC_151507_151508_151509_151510_combined.RDS"
+  use_simulated_data: false
+  normalization: "library-size"
+  fdr_threshold: 0.05
+  sample_adjust_scope: "within-sample"
+  plot_gene: ""
+  run_fast: false
+  export_results: false
+  output_dir: "tutorial_output"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = TRUE, message = FALSE,
+                     fig.width = 10, fig.height = 5, dpi = 120,
+                     collapse = TRUE, comment = "#>", error = FALSE)
+```
+
+# Overview
+
+This tutorial identifies spatially variable genes (SVGs) in four DLPFC tissue
+sections (151507, 151508, 151509, and 151510). The workflow produces a joint
+multi-sample test for each gene and complementary sample-level tests, then
+summarizes and visualizes the results. A joint discovery does **not** establish
+that the gene is spatially variable in every section, or that its spatial
+expression pattern is identical across sections.
+
+INSiGHT takes one expression matrix and one coordinate matrix per sample.
+Samples can have different numbers of spots and do not require spot-to-spot
+registration. This does not remove the cross-sample independence assumption of
+the joint test: dependence between sections can affect calibration.
+
+# Installation and Setup
+
+Install the updated package in a separate R session before knitting.
+
+```{r libraries}
+library(INSiGHT)
+library(Matrix)
+library(ggplot2)
+
+packageVersion("INSiGHT")
+```
+
+# Prepare the Input
+
+The input RDS must contain:
+
+| Component | Required structure |
+|:--|:--|
+| `counts` | List of nonnegative gene-by-spot matrices, preferably sparse, with unique gene and spot names. |
+| `spatial.locs` | List of numeric spot-by-two coordinate matrices, with spot names as row names. |
+| `samples.id` | Unique sample IDs in the same order as both lists. |
+
+Provide the full count matrices rather than preselecting SVGs. INSiGHT stores
+library totals before intersecting and filtering genes. Gene names identify
+shared genes across samples; spot names need to be unique within each sample,
+but can recur in different samples.
+
+```{r}
+dat <- readRDS("./data/DLPFC_151507_151508_151509_151510_combined.RDS")
+str(dat)
+```
+
+# Standard Analysis
+
+## Create and Process the Object
+
+The standard example uses the $k_s$-nearest-neighbor Gaussian kernel and all eigenvalues. This can require substantial time and memory for samples with more than 10,000 spots. The optional fast mode below uses a truncated eigendecomposition.
+
+```{r create-object}
+object_INSiGHT <- createINSiGHTobject(data.input = dat$counts,
+                     spatial.locs = dat$spatial.locs,
+                     sample.names = dat$samples.id)
+```
+
+The following settings are explicit so the tutorial does not rely on changing
+package defaults:
+
+- Quality control removes spots with total input expression below 10, genes
+  detected in fewer than 1% of retained spots in any sample, and mitochondrial
+  genes identified by the package's case-insensitive `mt-` name matching.
+- `normalization = "library-size"` divides each spot's expression by its stored
+  input library total and multiplies by 10,000 before ranking. 
+  `"none"` ranks input values directly;
+  `"log-library-size"` additionally applies `log1p`, giving equivalent ranks to
+  library-size normalization apart from numerical precision.
+- `rank.zero = FALSE` assigns zero counts an initial rank of zero and ranks only
+  positive values within each gene and sample. Ties receive average ranks by default.
+- Bandwidth estimation uses 36 nearest neighbors and quantile 0.3.
+
+Normalization changes the target from absolute count patterns toward relative
+expression patterns. It can mitigate spatial library-size effects, but changes
+in tissue composition or broad biological expression shifts can also change
+library totals. Choose preprocessing according to the scientific question;
+normalization is not a guarantee against confounding.
+
+```{r process-standard}
+object_INSiGHT <- processINSiGHT(
+    object = object_INSiGHT,
+    spot.threshold = 10, gene.threshold = 0.01,
+    NN4Kernel = FALSE, eigen.less = FALSE,
+    kernel.option = "single",
+    k.NN4bandwidth = 100, quantile.bandwidth = 0.1,
+    rank.tie = "average", rank.zero = FALSE,
+    normalization = "library-size"
+  )
+```
+
+## Joint and Sample-Level Tests
+
+`sample.inference = TRUE` reuses the sample-specific statistics and eigenvalues
+to calculate sample-level p-values alongside the joint test. It does not require
+reprocessing each sample, and results are returned for all tested genes, not
+only genes selected by the joint test.
+
+```{r test-standard}
+object_INSiGHT <- testINSiGHT(
+    object = object_INSiGHT,
+    QuadForm.method = "davies",
+    sample.inference = TRUE,
+    p.adjust.method = "BY"
+  )
+```
+
+For the joint analysis, BY adjustment is across all tested genes. With
+`sample.adjust.scope = "within-sample"`, sample-level BY adjustment is performed
+separately across genes in each sample. Set it to `"all-samples"` to adjust across
+all tested gene-sample pairs instead; joint adjustment is unchanged. 
+
+# Inspect the Results
+
+## Joint Discoveries
+
+`testResults` contains `ID` (gene identifier), `p.values_combined` (unadjusted joint
+p-value), and `p.values_adjusted` (adjusted joint p-value). With the single-kernel
+setting used here, no across-kernel combination is needed.
+
+```{r joint-results}
+head(object_INSiGHT@testResults)
+```
+
+## Complementary Sample-Level Results
+
+Each element of `sampleTestResults` has the same result columns as the joint
+table and is named by sample ID. Sample-level significance helps localize
+evidence, but a significant result in one sample and a nonsignificant result in
+another does not itself demonstrate a between-sample difference.
+
+```{r sample-results}
+sample_results <- object_INSiGHT@sampleTestResults
+knitr::kable(head(sample_results[[object_INSiGHT@samples[1]]], 10), digits = 4,
+             caption = paste("Sample-level results:", object_INSiGHT@samples[1]))
+```
+
+
+# Optional Fast Mode
+
+The fast mode requests the top 10% of eigenvalues. Approximation can affect calibration and power.
+
+```{r fast-mode, eval=params$run_fast}
+object_fast <- processINSiGHT(
+    object = new_object(),
+    spot.threshold = 10, gene.threshold = 0.01,
+    NN4Kernel = TRUE, k.NN4Kernel = 100,
+    eigen.less = TRUE, eigen.prop = 0.1,
+    rank.tie = "average", rank.zero = FALSE,
+    normalization = "library-size"
+  )
+  object_fast <- testINSiGHT(
+    object_fast, sample.inference = TRUE
+  )
+head(object_fast@testResults)
+```
