@@ -468,11 +468,11 @@ Results</a></li>
 
 <div id="overview" class="section level1" number="1">
 <h1><span class="header-section-number">1</span> Overview</h1>
-<p>This tutorial identifies spatially variable genes (SVGs) in four
-DLPFC tissue sections (151507, 151508, 151509, and 151510). The workflow
-produces a joint multi-sample test for each gene and complementary
-sample-level tests, then summarizes and visualizes the results. A joint
-discovery does <strong>not</strong> establish that the gene is spatially
+<p>This tutorial (under INSiGHT 1.2.1) identifies spatially variable
+genes (SVGs) in four DLPFC tissue sections (151507, 151508, 151509, and
+151510). The workflow produces a joint multi-sample test for each gene
+and complementary sample-level tests, then summarizes and visualizes the
+results. A joint discovery does not establish that the gene is spatially
 variable in every section, or that its spatial expression pattern is
 identical across sections.</p>
 <p>INSiGHT takes one expression matrix and one coordinate matrix per
@@ -486,6 +486,7 @@ can affect calibration.</p>
 Setup</h1>
 <p>Install the updated package in a separate R session before
 knitting.</p>
+<p>Load <strong>INSiGHT</strong> and other required packages</p>
 <pre class="r"><code>library(INSiGHT)
 library(Matrix)
 #&gt; Warning: package &#39;Matrix&#39; was built under R version 4.5.3
@@ -493,7 +494,7 @@ library(ggplot2)
 #&gt; Warning: package &#39;ggplot2&#39; was built under R version 4.5.3
 
 packageVersion(&quot;INSiGHT&quot;)
-#&gt; [1] &#39;1.0.0&#39;</code></pre>
+#&gt; [1] &#39;1.2.1&#39;</code></pre>
 </div>
 <div id="prepare-the-input" class="section level1" number="3">
 <h1><span class="header-section-number">3</span> Prepare the Input</h1>
@@ -526,10 +527,14 @@ spot names as row names.</td>
 </tr>
 </tbody>
 </table>
-<p>Provide the full count matrices rather than preselecting SVGs.
-INSiGHT stores library totals before intersecting and filtering genes.
-Gene names identify shared genes across samples; spot names need to be
-unique within each sample, but can recur in different samples.</p>
+<p>By default, INSiGHT stores library totals before intersecting and
+filtering genes (<code>normalization = &quot;library-size&quot;</code> in
+<code>processINSiGHT()</code>). Therefore, provide the full count
+matrices rather than preselecting SVGs; otherwise, set
+<code>normalization = &quot;none&quot;</code> when running
+<code>processINSiGHT()</code>. Gene names identify shared genes across
+samples. Spot names need to be unique within each sample, but can recur
+in different samples.</p>
 <pre class="r"><code>dat &lt;- readRDS(&quot;./data/DLPFC_151507_151508_151509_151510_combined.RDS&quot;)
 str(dat)
 #&gt; List of 3
@@ -591,13 +596,14 @@ str(dat)
 </div>
 <div id="standard-analysis" class="section level1" number="4">
 <h1><span class="header-section-number">4</span> Standard Analysis</h1>
+<p>The standard example computes and uses all eigenvalues after
+constrcuting the <span class="math inline">\(k_s\)</span>-nearest-neighbor Gaussian kernel.
+This can require substantial time and memory for samples with more than
+10,000 spots. The optional fast mode below uses a truncated
+eigendecomposition.</p>
 <div id="create-and-process-the-object" class="section level2" number="4.1">
 <h2><span class="header-section-number">4.1</span> Create and Process
 the Object</h2>
-<p>The standard example uses the <span class="math inline">\(k_s\)</span>-nearest-neighbor Gaussian kernel and
-all eigenvalues. This can require substantial time and memory for
-samples with more than 10,000 spots. The optional fast mode below uses a
-truncated eigendecomposition.</p>
 <pre class="r"><code>object_INSiGHT &lt;- createINSiGHTobject(data.input = dat$counts,
                      spatial.locs = dat$spatial.locs,
                      sample.names = dat$samples.id)
@@ -681,11 +687,77 @@ Results</h1>
 <div id="joint-discoveries" class="section level2" number="5.1">
 <h2><span class="header-section-number">5.1</span> Joint
 Discoveries</h2>
+<p>With the single-kernel setting used here, no across-kernel
+combination is needed.</p>
 <p><code>testResults</code> contains <code>ID</code> (gene identifier),
-<code>p.values_combined</code> (unadjusted joint p-value), and
-<code>p.values_adjusted</code> (adjusted joint p-value). With the
-single-kernel setting used here, no across-kernel combination is
-needed.</p>
+<code>p.values_combined</code> (unadjusted joint p-value; when
+<code>kernel.option = &quot;mxiture&quot;</code>, unadjusted p-value after Cauchy
+combination across the results under multiple kernels), and
+<code>p.values_adjusted</code> (adjusted joint p-value).</p>
+<pre class="r"><code>knitr::kable(head(object_INSiGHT@testResults, 10), digits = 4,
+             caption = &quot;Joint results&quot;)</code></pre>
+<table>
+<caption>Joint results</caption>
+<thead>
+<tr class="header">
+<th align="left">ID</th>
+<th align="right">p.values_adjusted</th>
+<th align="right">p.values_combined</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">AL669831.5</td>
+<td align="right">1.0000</td>
+<td align="right">0.1588</td>
+</tr>
+<tr class="even">
+<td align="left">NOC2L</td>
+<td align="right">0.1060</td>
+<td align="right">0.0033</td>
+</tr>
+<tr class="odd">
+<td align="left">KLHL17</td>
+<td align="right">1.0000</td>
+<td align="right">0.8219</td>
+</tr>
+<tr class="even">
+<td align="left">HES4</td>
+<td align="right">0.2356</td>
+<td align="right">0.0082</td>
+</tr>
+<tr class="odd">
+<td align="left">ISG15</td>
+<td align="right">0.0000</td>
+<td align="right">0.0000</td>
+</tr>
+<tr class="even">
+<td align="left">AGRN</td>
+<td align="right">0.1862</td>
+<td align="right">0.0062</td>
+</tr>
+<tr class="odd">
+<td align="left">C1orf159</td>
+<td align="right">1.0000</td>
+<td align="right">0.3150</td>
+</tr>
+<tr class="even">
+<td align="left">TNFRSF18</td>
+<td align="right">1.0000</td>
+<td align="right">0.3630</td>
+</tr>
+<tr class="odd">
+<td align="left">SDF4</td>
+<td align="right">1.0000</td>
+<td align="right">0.1923</td>
+</tr>
+<tr class="even">
+<td align="left">B3GALT6</td>
+<td align="right">1.0000</td>
+<td align="right">0.3501</td>
+</tr>
+</tbody>
+</table>
 <pre class="r"><code>head(object_INSiGHT@testResults)
 #&gt;           ID p.values_adjusted p.values_combined
 #&gt; 1 AL669831.5      1.000000e+00      1.587649e-01
@@ -775,17 +847,98 @@ knitr::kable(head(sample_results[[object_INSiGHT@samples[1]]], 10), digits = 4,
 <p>The fast mode requests the top 10% of eigenvalues. Approximation can
 affect calibration and power.</p>
 <pre class="r"><code>object_fast &lt;- processINSiGHT(
-    object = new_object(),
-    spot.threshold = 10, gene.threshold = 0.01,
-    NN4Kernel = TRUE, k.NN4Kernel = 100,
-    eigen.less = TRUE, eigen.prop = 0.1,
-    rank.tie = &quot;average&quot;, rank.zero = FALSE,
-    normalization = &quot;library-size&quot;
-  )
-  object_fast &lt;- testINSiGHT(
-    object_fast, sample.inference = TRUE
-  )
-head(object_fast@testResults)</code></pre>
+  object = object_INSiGHT,
+  spot.threshold = 10, gene.threshold = 0.01,
+  NN4Kernel = TRUE, k.NN4Kernel = 100,
+  eigen.less = TRUE, eigen.prop = 0.1,
+  rank.tie = &quot;average&quot;, rank.zero = FALSE,
+  normalization = &quot;library-size&quot;
+)
+#&gt; ##    0 spots with total gene expression less than 10 have been removed for the sample 151507.
+#&gt; ##    0 spots with total gene expression less than 10 have been removed for the sample 151508.
+#&gt; ##    0 spots with total gene expression less than 10 have been removed for the sample 151509.
+#&gt; ##    0 spots with total gene expression less than 10 have been removed for the sample 151510.
+#&gt; ##    0 mt genes and genes with non-zero expression spot rate less than 0.01 have been removed for all the samples. 
+#&gt; ##    11654 genes will be examined for all the samples after quality control. 
+#&gt; ##    Constructing the single Gaussian kernel... 
+#&gt; ##    Sample 151507 is complete. 
+#&gt; ##    Sample 151508 is complete. 
+#&gt; ##    Sample 151509 is complete. 
+#&gt; ##    Sample 151510 is complete. 
+#&gt; ##    Working on rank scores...
+#&gt; ##    Sample 151507 is complete. 
+#&gt; ##    Sample 151508 is complete. 
+#&gt; ##    Sample 151509 is complete. 
+#&gt; ##    Sample 151510 is complete.
+object_fast &lt;- testINSiGHT(
+  object_fast, sample.inference = TRUE
+)
+#&gt; ##   Testing with Gaussian kernel 1...
+  
+knitr::kable(head(object_fast@testResults, 10), digits = 4,
+             caption = &quot;Joint results (fast mode)&quot;)</code></pre>
+<table>
+<caption>Joint results (fast mode)</caption>
+<thead>
+<tr class="header">
+<th align="left">ID</th>
+<th align="right">p.values_adjusted</th>
+<th align="right">p.values_combined</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td align="left">AL669831.5</td>
+<td align="right">1</td>
+<td align="right">0.2049</td>
+</tr>
+<tr class="even">
+<td align="left">NOC2L</td>
+<td align="right">1</td>
+<td align="right">0.0065</td>
+</tr>
+<tr class="odd">
+<td align="left">KLHL17</td>
+<td align="right">1</td>
+<td align="right">0.8474</td>
+</tr>
+<tr class="even">
+<td align="left">HES4</td>
+<td align="right">1</td>
+<td align="right">0.0147</td>
+</tr>
+<tr class="odd">
+<td align="left">ISG15</td>
+<td align="right">0</td>
+<td align="right">0.0000</td>
+</tr>
+<tr class="even">
+<td align="left">AGRN</td>
+<td align="right">1</td>
+<td align="right">0.0115</td>
+</tr>
+<tr class="odd">
+<td align="left">C1orf159</td>
+<td align="right">1</td>
+<td align="right">0.3664</td>
+</tr>
+<tr class="even">
+<td align="left">TNFRSF18</td>
+<td align="right">1</td>
+<td align="right">0.4215</td>
+</tr>
+<tr class="odd">
+<td align="left">SDF4</td>
+<td align="right">1</td>
+<td align="right">0.2373</td>
+</tr>
+<tr class="even">
+<td align="left">B3GALT6</td>
+<td align="right">1</td>
+<td align="right">0.4114</td>
+</tr>
+</tbody>
+</table>
 </div>
 
 

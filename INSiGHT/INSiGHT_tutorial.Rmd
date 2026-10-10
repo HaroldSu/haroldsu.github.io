@@ -28,10 +28,10 @@ knitr::opts_chunk$set(echo = TRUE, warning = TRUE, message = FALSE,
 
 # Overview
 
-This tutorial identifies spatially variable genes (SVGs) in four DLPFC tissue
+This tutorial (under INSiGHT 1.2.1) identifies spatially variable genes (SVGs) in four DLPFC tissue
 sections (151507, 151508, 151509, and 151510). The workflow produces a joint
 multi-sample test for each gene and complementary sample-level tests, then
-summarizes and visualizes the results. A joint discovery does **not** establish
+summarizes and visualizes the results. A joint discovery does not establish
 that the gene is spatially variable in every section, or that its spatial
 expression pattern is identical across sections.
 
@@ -43,7 +43,14 @@ the joint test: dependence between sections can affect calibration.
 # Installation and Setup
 
 Install the updated package in a separate R session before knitting.
+```{r install, eval=FALSE, include=FALSE}
+if (!require("devtools", quietly = TRUE)){
+  install.packages("devtools")
+}
+devtools::install_github("HaroldSu/INSiGHT")
+```
 
+Load **INSiGHT** and other required packages
 ```{r libraries}
 library(INSiGHT)
 library(Matrix)
@@ -62,10 +69,8 @@ The input RDS must contain:
 | `spatial.locs` | List of numeric spot-by-two coordinate matrices, with spot names as row names. |
 | `samples.id` | Unique sample IDs in the same order as both lists. |
 
-Provide the full count matrices rather than preselecting SVGs. INSiGHT stores
-library totals before intersecting and filtering genes. Gene names identify
-shared genes across samples; spot names need to be unique within each sample,
-but can recur in different samples.
+By default, INSiGHT stores library totals before intersecting and filtering genes (`normalization = "library-size"` in `processINSiGHT()`). Therefore, provide the full count matrices rather than preselecting SVGs; otherwise, set `normalization = "none"` when running `processINSiGHT()`.
+Gene names identify shared genes across samples. Spot names need to be unique within each sample, but can recur in different samples.
 
 ```{r}
 dat <- readRDS("./data/DLPFC_151507_151508_151509_151510_combined.RDS")
@@ -74,9 +79,9 @@ str(dat)
 
 # Standard Analysis
 
-## Create and Process the Object
+The standard example computes and uses all eigenvalues after constrcuting the $k_s$-nearest-neighbor Gaussian kernel. This can require substantial time and memory for samples with more than 10,000 spots. The optional fast mode below uses a truncated eigendecomposition.
 
-The standard example uses the $k_s$-nearest-neighbor Gaussian kernel and all eigenvalues. This can require substantial time and memory for samples with more than 10,000 spots. The optional fast mode below uses a truncated eigendecomposition.
+## Create and Process the Object
 
 ```{r create-object}
 object_INSiGHT <- createINSiGHTobject(data.input = dat$counts,
@@ -142,11 +147,13 @@ all tested gene-sample pairs instead; joint adjustment is unchanged.
 
 ## Joint Discoveries
 
-`testResults` contains `ID` (gene identifier), `p.values_combined` (unadjusted joint
-p-value), and `p.values_adjusted` (adjusted joint p-value). With the single-kernel
-setting used here, no across-kernel combination is needed.
+With the single-kernel setting used here, no across-kernel combination is needed.
+
+`testResults` contains `ID` (gene identifier), `p.values_combined` (unadjusted joint p-value; when `kernel.option = "mxiture"`, unadjusted p-value after Cauchy combination across the results under multiple kernels), and `p.values_adjusted` (adjusted joint p-value). 
 
 ```{r joint-results}
+knitr::kable(head(object_INSiGHT@testResults, 10), digits = 4,
+             caption = "Joint results")
 head(object_INSiGHT@testResults)
 ```
 
@@ -168,17 +175,19 @@ knitr::kable(head(sample_results[[object_INSiGHT@samples[1]]], 10), digits = 4,
 
 The fast mode requests the top 10% of eigenvalues. Approximation can affect calibration and power.
 
-```{r fast-mode, eval=params$run_fast}
+```{r fast-mode}
 object_fast <- processINSiGHT(
-    object = new_object(),
-    spot.threshold = 10, gene.threshold = 0.01,
-    NN4Kernel = TRUE, k.NN4Kernel = 100,
-    eigen.less = TRUE, eigen.prop = 0.1,
-    rank.tie = "average", rank.zero = FALSE,
-    normalization = "library-size"
-  )
-  object_fast <- testINSiGHT(
-    object_fast, sample.inference = TRUE
-  )
-head(object_fast@testResults)
+  object = object_INSiGHT,
+  spot.threshold = 10, gene.threshold = 0.01,
+  NN4Kernel = TRUE, k.NN4Kernel = 100,
+  eigen.less = TRUE, eigen.prop = 0.1,
+  rank.tie = "average", rank.zero = FALSE,
+  normalization = "library-size"
+)
+object_fast <- testINSiGHT(
+  object_fast, sample.inference = TRUE
+)
+  
+knitr::kable(head(object_fast@testResults, 10), digits = 4,
+             caption = "Joint results (fast mode)")
 ```
